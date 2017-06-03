@@ -25,7 +25,6 @@ def denied(request):
 @csrf_exempt
 def verify(request):
     try:
-        data = request.POST.get("data")
         client_id = request.POST.get("client_id")
         verification_data = request.POST.get("verification_data")
         state_code = request.POST.get("state")
