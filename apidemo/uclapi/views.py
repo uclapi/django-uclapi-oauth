@@ -1,12 +1,15 @@
 from django.shortcuts import render, HttpResponse, redirect
 from django.http import JsonResponse
 from django.core.serializers.json import DjangoJSONEncoder
-from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie, csrf_protect
+from django.views.decorators.csrf import csrf_protect
 import requests
 
-from .models import State, OAuthToken
+from .models import OAuthToken
 from .helpers import generate_state
 
+import base64
+import hashlib
+import hmac
 import os
 import json
 import requests
@@ -14,6 +17,7 @@ import requests
 
 def render_login_button(request):
     return render(request, 'login.html')
+
 
 @csrf_protect
 def process_login(request):
@@ -24,6 +28,7 @@ def process_login(request):
     auth_url += "&state=" + state
 
     return redirect(auth_url)
+
 
 def callback(request):
     try:
@@ -39,11 +44,11 @@ def callback(request):
         return denied(request)
     else:
         return JsonResponse({
+            "ok": False,
             "error": "Result was not allowed or denied."
         })
 
 
-# TODO: FINISH THIS FUNCTION IN THE NEXT COMMIT
 def allowed(request):
     try:
         code = request.GET.get("code")
@@ -58,115 +63,82 @@ def allowed(request):
         session_state = request.session["state"]
     except KeyError:
         return JsonResponse({
+            "ok": False,
             "error": "There is no session cookie set containing a state"
         })
+
+    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"), 'ascii'),
+                           msg=code.encode('ascii'),
+                           digestmod=hashlib.sha256).digest()
+    client_secret_proof = base64.b64encode(hmac_digest).decode()
+
+    url = os.environ.get("UCLAPI_URL") + "/oauth/token"
+    params = {
+        'grant_type': 'authorization_code',
+        'code': code,
+        'client_secret_proof': client_secret_proof
+    }
+
+    r = requests.get(url, params=params)
+
+    try:
+        token_data = r.json()
+
+        if token_data["ok"] is not True:
+            return JsonResponse({
+                "ok": False,
+                "error": "An error occurred: " + token_data["error"]
+            })
+
+        if token_data["state"] != state:
+            return JsonResponse({
+                "ok": False,
+                "error": "The wrong state was returned"
+            })
+
+        if token_data["client_id"] != client_id:
+            return JsonResponse({
+                "ok": False,
+                "error": "The wrong client ID was returned"
+            })
+
+        token_code = token_data["token"]
+        scope_data = json.loads(token_data["scope"])
+    except KeyError:
+        return JsonResponse({
+            "ok": False,
+            "error": "Proper JSON was not returned by the token endpoint"
+        })
+
+    token = OAuthToken(code=token_code)
+    try:
+        token.private_roombookings = scope_data["private_roombookings"]
+    except KeyError:
+        pass
+
+    try:
+        token.private_timetable = scope_data["private_timetable"]
+    except KeyError:
+        pass
+
+    try:
+        token.private_uclu = scope_data["private_uclu"]
+    except KeyError:
+        pass
+
+    token.save()
+
+    url = os.environ.get("UCLAPI_URL") + "/oauth/user/data"
+    params = {
+        'token': token_code,
+        'client_secret_proof': client_secret_proof
+    }
+
+    r = requests.get(url, params=params)
+
+    return JsonResponse(r.json())
 
 
 def denied(request):
     return render(request, 'denied.html', {
-        "state": request.GET.get("state", None)
-    })
-
-
-# def getState(request):
-#     state = State()
-#     state.save()
-#     return JsonResponse({
-#         "state": state.code
-#     })
-
-# @csrf_exempt
-# def verify(request):
-#     try:
-#         client_id = request.POST.get("client_id")
-#         verification_data = request.POST.get("verification_data")
-#         state_code = request.POST.get("state")
-#         client_secret = os.environ.get("UCLAPI_CLIENT_SECRET")
-#     except:
-#         return JsonResponse({
-#             "error": "Invalid data passed"
-#         })
-    
-#     if os.environ.get("UCLAPI_CLIENT_ID") != client_id:
-#         return JsonResponse({
-#             "error": "Client ID does not match"
-#         })
-
-#     try:
-#         state = State.objects.get(code=state_code)
-#         if (state.verified):
-#             return JsonResponse({
-#                 "error": "State already verified"
-#             })
-        
-#         state.verified = True
-#         state.save()
-#     except:
-#         return JsonResponse({
-#             "error": "Invalid state"
-#         })
-
-#     return JsonResponse({
-#         "client_secret": client_secret,
-#         "verification_data": verification_data
-#     })
-
-# @csrf_exempt
-# def token(request):
-#     try:
-#         state_code = request.POST.get("state")
-#         client_id = request.POST.get("client_id")
-#         token_code = request.POST.get("token")
-#         scope = json.loads(request.POST.get("scope"))
-
-#     except:
-#         return JsonResponse({
-#             "error": "Token request was malformed"
-#         })
-
-#     if os.environ.get("UCLAPI_CLIENT_ID") != client_id:
-#         return JsonResponse({
-#             "error": "Client ID not valid"
-#         })
-
-#     try:
-#         state = State.objects.get(code=state_code)
-#     except:
-#         return JsonResponse({
-#             "error": "State does not exist"
-#         })
-
-#     token = OAuthToken(
-#         code=token_code,
-#         private_roombookings=scope["private_roombookings"],
-#         private_timetable=scope["private_timetable"],
-#         private_uclu=scope["private_uclu"]
-#     )
-
-#     token.save()
-#     state.token = token
-#     state.save()
-
-#     return JsonResponse({
-#         "ok": "All data received"
-#     })
-
-# @csrf_exempt
-# def callback(request):
-#     try:
-#         client_id = request.GET.get("client_id")
-#         state_code = request.GET.get("state")
-
-#         state = State.objects.get(code=state_code)
-#         token = state.token
-#     except:
-#         return JsonResponse({
-#             "error": "Invalid data given in URL"
-#         })
-
-#     url = os.environ.get("UCLAPI_URL") + "/oauth/user/data"
-#     r = requests.get(url, params={
-#         "token": token.code
-#     })
-
-#     return JsonResponse(r.json())
+                  "state": request.GET.get("state", None)})
