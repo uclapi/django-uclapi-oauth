@@ -128,6 +128,11 @@ def allowed(request):
 
     token.save()
 
+    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"), 'ascii'),
+                           msg=token_code.encode('ascii'),
+                           digestmod=hashlib.sha256).digest()
+    client_secret_proof = base64.b64encode(hmac_digest).decode()
+
     url = os.environ.get("UCLAPI_URL") + "/oauth/user/data"
     params = {
         'token': token_code,
