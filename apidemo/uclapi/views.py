@@ -67,7 +67,8 @@ def allowed(request):
             "error": "There is no session cookie set containing a state"
         })
 
-    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"), 'ascii'),
+    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"),
+                                 'ascii'),
                            msg=code.encode('ascii'),
                            digestmod=hashlib.sha256).digest()
     client_secret_proof = base64.b64encode(hmac_digest).decode()
@@ -128,7 +129,8 @@ def allowed(request):
 
     token.save()
 
-    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"), 'ascii'),
+    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"),
+                                 'ascii'),
                            msg=token_code.encode('ascii'),
                            digestmod=hashlib.sha256).digest()
     client_secret_proof = base64.b64encode(hmac_digest).decode()
