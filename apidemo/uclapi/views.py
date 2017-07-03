@@ -85,7 +85,7 @@ def allowed(request):
     try:
         token_data = r.json()
 
-        if token_data["success"] is not True:
+        if token_data["ok"] is not True:
             return JsonResponse({
                 "ok": False,
                 "error": "An error occurred: " + token_data["error"]
@@ -139,7 +139,7 @@ def denied(request):
 def token_test(request):
     if not os.environ.get("TOKEN_DEBUG_ENABLED"):
         return JsonResponse({
-            "success": False,
+            "ok": False,
             "error": "Token debugging must be enabled to use this endpoint."
         })
 
@@ -147,7 +147,7 @@ def token_test(request):
         token = request.GET['token']
     except KeyError:
         return JsonResponse({
-            "success": False,
+            "ok": False,
             "error": "A token must be provided to use this endpoint."
         })
 
