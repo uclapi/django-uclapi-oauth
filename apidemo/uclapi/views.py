@@ -85,7 +85,7 @@ def allowed(request):
     try:
         token_data = r.json()
 
-        if token_data["ok"] is not True:
+        if token_data["success"] is not True:
             return JsonResponse({
                 "ok": False,
                 "error": "An error occurred: " + token_data["error"]
@@ -112,20 +112,6 @@ def allowed(request):
         })
 
     token = OAuthToken(code=token_code)
-    try:
-        token.private_roombookings = scope_data["private_roombookings"]
-    except KeyError:
-        pass
-
-    try:
-        token.private_timetable = scope_data["private_timetable"]
-    except KeyError:
-        pass
-
-    try:
-        token.private_uclu = scope_data["private_uclu"]
-    except KeyError:
-        pass
 
     token.save()
 
@@ -149,3 +135,36 @@ def allowed(request):
 def denied(request):
     return render(request, 'denied.html', {
                   "state": request.GET.get("state", None)})
+
+def token_test(request):
+    if not os.environ.get("TOKEN_DEBUG_ENABLED"):
+        return JsonResponse({
+            "success": False,
+            "error": "Token debugging must be enabled to use this endpoint."
+        })
+
+    try:
+        token = request.GET['token']
+    except KeyError:
+        return JsonResponse({
+            "success": False,
+            "error": "A token must be provided to use this endpoint."
+        })
+
+
+    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"),
+                                 'ascii'),
+                           msg=token.encode('ascii'),
+                           digestmod=hashlib.sha256).digest()
+    client_secret_proof = base64.b64encode(hmac_digest).decode()
+
+    url = os.environ.get("UCLAPI_URL") + "/oauth/tokens/test"
+
+    params = {
+        'token': token,
+        'client_secret_proof': client_secret_proof
+    }
+
+    r = requests.get(url, params=params)
+
+    return JsonResponse(r.json())
