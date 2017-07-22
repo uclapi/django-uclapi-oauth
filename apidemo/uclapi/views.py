@@ -121,9 +121,35 @@ def allowed(request):
                            digestmod=hashlib.sha256).digest()
     client_secret_proof = base64.b64encode(hmac_digest).decode()
 
+    url = os.environ.get("UCLAPI_URL") + "/oauth/nonce"
+    params = {
+        'token': token_code,
+        'client_secret_proof': client_secret_proof
+    }
+
+    r = requests.get(url, params=params)
+
+    nonce_data = r.json()
+    try:
+        nonce = nonce_data["nonce"]
+    except KeyError:
+        return JsonResponse({
+            "ok": False,
+            "error": "No nonce was received."
+        })
+
+    verification_str = token_code + "&" + nonce
+
+    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"),
+                                 'ascii'),
+                           msg=verification_str.encode('ascii'),
+                           digestmod=hashlib.sha256).digest()
+    client_secret_proof = base64.b64encode(hmac_digest).decode()
+
     url = os.environ.get("UCLAPI_URL") + "/oauth/user/data"
     params = {
         'token': token_code,
+        'nonce': nonce,
         'client_secret_proof': client_secret_proof
     }
 
