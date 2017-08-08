@@ -7,9 +7,6 @@ import requests
 from .models import OAuthToken
 from .helpers import generate_state
 
-import base64
-import hashlib
-import hmac
 import os
 import json
 import requests
@@ -67,17 +64,11 @@ def allowed(request):
             "error": "There is no session cookie set containing a state"
         })
 
-    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"),
-                                 'ascii'),
-                           msg=code.encode('ascii'),
-                           digestmod=hashlib.sha256).digest()
-    client_secret_proof = base64.b64encode(hmac_digest).decode()
-
     url = os.environ.get("UCLAPI_URL") + "/oauth/token"
     params = {
         'grant_type': 'authorization_code',
         'code': code,
-        'client_secret_proof': client_secret_proof
+        'client_secret': os.environ.get("UCLAPI_CLIENT_SECRET")
     }
 
     r = requests.get(url, params=params)
@@ -115,42 +106,10 @@ def allowed(request):
 
     token.save()
 
-    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"),
-                                 'ascii'),
-                           msg=token_code.encode('ascii'),
-                           digestmod=hashlib.sha256).digest()
-    client_secret_proof = base64.b64encode(hmac_digest).decode()
-
-    url = os.environ.get("UCLAPI_URL") + "/oauth/nonce"
-    params = {
-        'token': token_code,
-        'client_secret_proof': client_secret_proof
-    }
-
-    r = requests.get(url, params=params)
-
-    nonce_data = r.json()
-    try:
-        nonce = nonce_data["nonce"]
-    except KeyError:
-        return JsonResponse({
-            "ok": False,
-            "error": "No nonce was received."
-        })
-
-    verification_str = token_code + "&" + nonce
-
-    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"),
-                                 'ascii'),
-                           msg=verification_str.encode('ascii'),
-                           digestmod=hashlib.sha256).digest()
-    client_secret_proof = base64.b64encode(hmac_digest).decode()
-
     url = os.environ.get("UCLAPI_URL") + "/oauth/user/data"
     params = {
         'token': token_code,
-        'nonce': nonce,
-        'client_secret_proof': client_secret_proof
+        'client_secret': os.environ.get("UCLAPI_CLIENT_SECRET")
     }
 
     r = requests.get(url, params=params)
@@ -177,18 +136,9 @@ def token_test(request):
             "error": "A token must be provided to use this endpoint."
         })
 
-
-    hmac_digest = hmac.new(bytes(os.environ.get("UCLAPI_CLIENT_SECRET"),
-                                 'ascii'),
-                           msg=token.encode('ascii'),
-                           digestmod=hashlib.sha256).digest()
-    client_secret_proof = base64.b64encode(hmac_digest).decode()
-
-    url = os.environ.get("UCLAPI_URL") + "/oauth/tokens/test"
-
     params = {
         'token': token,
-        'client_secret_proof': client_secret_proof
+        'client_secret': os.environ.get("UCLAPI_CLIENT_SECRET")
     }
 
     r = requests.get(url, params=params)
